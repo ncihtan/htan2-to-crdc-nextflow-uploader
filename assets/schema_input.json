@@ -9,7 +9,7 @@
     "properties": {
       "type": { "type": "string", "enum": ["file"] },
 
-      "study.phs_accession": {
+      "study.study_id": {
         "type": "string",
         "pattern": "^phs\\d{6,}$"
       },
@@ -58,7 +58,7 @@
     },
     "required": [
       "type",
-      "study.phs_accession",
+      "study.study_id",
       "file_name",
       "file_type",
       "file_size",
