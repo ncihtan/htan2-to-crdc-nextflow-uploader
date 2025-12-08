@@ -1,4 +1,4 @@
-type	study.phs_accession	sample.sample_id	file_id	file_name	file_type	file_size	md5sum	experimental_strategy_and_data_subtypes	entityId	file_description	file_url_in_cds	submission_version	checksum_value	checksum_algorithm	crdc_id	file_mapping_level	release_datetime	is_supplementary_file
+type	study.phs_accession	sample.sample_id	file_id	file_name	file_type	file_size	md5sum	experimental_strategy_and_data_subtypes	entityid	file_description	file_url_in_cds	submission_version	checksum_value	checksum_algorithm	crdc_id	file_mapping_level	release_datetime	is_supplementary_file
 file	phs002371	HTA9_27_22		0000265770_S1_R1_001.fastq.gz	FASTQ	5922226903	fffd2ccf0b13429c7eb29e047971fa3a	WXS; RNA-Seq	syn68527411									
 file	phs002371	HTA9_27_22		0000265770_S1_R2_001.fastq.gz	FASTQ	6071072710	3490397151b6e75aa798e397e909f217	WXS; RNA-Seq	syn68527423									
 file	phs002371	HTA9_27_21		0000303169_S1_R1_001.fastq.gz	FASTQ	5813919946	8522e1fde70516357f38f4577e1bd5ff	WXS; RNA-Seq	syn68527427									
