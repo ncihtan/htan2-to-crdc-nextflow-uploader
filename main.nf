@@ -23,7 +23,7 @@ validateParameters()
 
 // headers must match your TSV
 def headers = [
-  "type", "study.phs_accession", "participant.study_participant_id",
+  "type", "study.study_id", "participant.study_participant_id",
   "sample.sample_id", "file_name", "file_type", "file_description",
   "file_size", "md5sum", "experimental_strategy_and_data_subtypes",
   "submission_version", "checksum_value", "checksum_algorithm",
