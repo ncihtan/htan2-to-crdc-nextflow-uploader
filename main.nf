@@ -48,6 +48,7 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
+    maxForks  = 100   // only 100 tasks at a time
     // One container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
 
