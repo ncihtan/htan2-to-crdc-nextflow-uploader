@@ -69,15 +69,17 @@ process synapse_get {
 }
 
 process write_file_tsv {
-    // switched from Docker Hub python:3.11 to GHCR synapse client image
+    // Use GHCR image instead of Docker Hub python:3.11
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
     tag "${meta.file_name}"
 
     input:
-    tuple val(meta), path(files)
+    // NOTE: no files path here – avoids staging FASTQs into this task
+    val(meta)
 
     output:
-    tuple val(meta), path(files), path("samplesheet_no_entityid-${meta.file_name}.tsv")
+    // meta + the per-file TSV
+    tuple val(meta), path("samplesheet_no_entityid-*.tsv")
 
     script:
     def json = groovy.json.JsonOutput.toJson(meta)
@@ -95,7 +97,6 @@ process write_file_tsv {
 
 
 process make_config_yml {
-    // switched from Docker Hub python:3.11 to GHCR synapse client image
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
     tag "${meta.file_name}"
 
@@ -128,7 +129,6 @@ process make_config_yml {
 
 
 process crdc_upload {
-    // switched from Docker Hub python:3.11 to GHCR synapse client image
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
     tag "${meta.file_name}"
 
@@ -190,19 +190,29 @@ process crdc_upload {
 workflow {
     // Step 1: download files from Synapse
     fetched = ch_input | synapse_get
-    
+    // fetched: (meta, files)
+
     // Step 2: drop entityid inline
     cleaned = fetched.map { meta, files ->
         def clean_meta = meta.findAll { k, v -> k != 'entityid' }
-        tuple(clean_meta, files)
+        tuple(clean_meta, files)  // (meta_no_entityid, files)
     }
-    
-    // Step 3: write a per-file TSV
-    per_file = cleaned | write_file_tsv
-    
-    // Step 4: make YAML config for each file
-    with_yaml = per_file | make_config_yml
-    
-    // Step 5: upload
+
+    // Step 3: write a per-file TSV WITHOUT staging FASTQs
+    // meta-only stream into write_file_tsv
+    tsv_ch = cleaned
+        .map { meta, files -> meta }
+        | write_file_tsv              // (meta, manifest_tsv)
+
+    // Step 4: reattach files + manifest TSV for config creation
+    combined = cleaned.join(tsv_ch, by: 0)
+        .map { meta, files, _meta2, manifest_tsv ->
+            tuple(meta, files, manifest_tsv)
+        }
+
+    // Step 5: make YAML config for each file
+    with_yaml = combined | make_config_yml
+
+    // Step 6: upload
     crdc_upload(with_yaml)
 }
