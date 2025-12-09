@@ -69,7 +69,8 @@ process synapse_get {
 }
 
 process write_file_tsv {
-    container 'python:3.11'
+    // switched from Docker Hub python:3.11 to GHCR synapse client image
+    container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
     tag "${meta.file_name}"
 
     input:
@@ -94,7 +95,8 @@ process write_file_tsv {
 
 
 process make_config_yml {
-    container 'python:3.11'
+    // switched from Docker Hub python:3.11 to GHCR synapse client image
+    container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
     tag "${meta.file_name}"
 
     input:
@@ -126,7 +128,8 @@ process make_config_yml {
 
 
 process crdc_upload {
-    container 'python:3.11'
+    // switched from Docker Hub python:3.11 to GHCR synapse client image
+    container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
     tag "${meta.file_name}"
 
     input:
