@@ -73,12 +73,10 @@ process write_file_tsv {
     tag "${meta.file_name}"
 
     input:
-    // Only metadata, no FASTQ/file paths so we don't download big files here
-    val(meta)
+    tuple val(meta), path(files)
 
     output:
-    // Emit meta + the per-file TSV; files are handled in the workflow join
-    tuple val(meta), path("samplesheet_no_entityid-*.tsv")
+    tuple val(meta), path(files), path("samplesheet_no_entityid-${meta.file_name}.tsv")
 
     script:
     def json = groovy.json.JsonOutput.toJson(meta)
@@ -189,31 +187,19 @@ process crdc_upload {
 workflow {
     // Step 1: download files from Synapse
     fetched = ch_input | synapse_get
-    // fetched: (meta, files)
-
+    
     // Step 2: drop entityid inline
     cleaned = fetched.map { meta, files ->
         def clean_meta = meta.findAll { k, v -> k != 'entityid' }
-        tuple(clean_meta, files)  // (meta_without_entityid, files)
+        tuple(clean_meta, files)
     }
-
-    // Step 3: write a per-file TSV WITHOUT touching the FASTQ files
-    // Create a meta-only stream for write_file_tsv
-    tsv_ch = cleaned
-        .map { meta, files -> meta }    // keep only meta
-        | write_file_tsv                // emits (meta, manifest_tsv)
-
-    // Step 4: reattach files + manifest TSV together for config creation
-    // Join cleaned (meta, files) with tsv_ch (meta, manifest_tsv) on meta
-    combined = cleaned.join(tsv_ch, by: 0)
-        .map { meta, files, meta2, manifest_tsv ->
-            // meta and meta2 are equal join keys; keep one
-            tuple(meta, files, manifest_tsv)
-        }
-
-    // Step 5: make YAML config for each file
-    with_yaml = combined | make_config_yml
-
-    // Step 6: upload
+    
+    // Step 3: write a per-file TSV
+    per_file = cleaned | write_file_tsv
+    
+    // Step 4: make YAML config for each file
+    with_yaml = per_file | make_config_yml
+    
+    // Step 5: upload
     crdc_upload(with_yaml)
 }
