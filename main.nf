@@ -75,6 +75,15 @@ process synapse_to_crdc {
     """
     set -euo pipefail
 
+    echo "=== Step 0: Install git (required for cloning uploader repo) ==="
+    if command -v apt-get >/dev/null 2>&1; then
+      apt-get update -y
+      apt-get install -y git
+    else
+      echo "apt-get not available; cannot install git" >&2
+      exit 127
+    fi
+
     echo "=== Step 1: Downloading from Synapse ${meta.entityid} ==="
     synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid}
 
