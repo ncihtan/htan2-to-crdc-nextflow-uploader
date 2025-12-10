@@ -88,11 +88,54 @@ process synapse_to_crdc {
     echo "=== Step 1: Downloading from Synapse ${meta.entityid} ==="
     synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid}
 
-    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} ==="
+    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (with file_size/md5 verification) ==="
     pip install --quiet pandas
     python3 - <<'PYCODE'
-    import pandas as pd, json
+    import pandas as pd, json, os, hashlib, sys
+
+    # Load row from Nextflow-provided JSON
     row = json.loads('''${json}''')
+
+    filename = row.get("file_name")
+    if not filename or not os.path.exists(filename):
+        print(f"[WARN] Downloaded file {filename!r} not found; cannot verify size/md5", file=sys.stderr)
+    else:
+        # Compute actual file size
+        actual_size = os.path.getsize(filename)
+
+        # Compute actual md5
+        h = hashlib.md5()
+        with open(filename, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        actual_md5 = h.hexdigest()
+
+        # Parse recorded values from metadata
+        recorded_size = None
+        if row.get("file_size") not in (None, "", "NA", "NaN"):
+            try:
+                recorded_size = int(row.get("file_size"))
+            except (TypeError, ValueError):
+                recorded_size = None
+
+        recorded_md5 = row.get("md5sum") or ""
+
+        # Compare and, if different/missing, update the TSV values
+        if recorded_size != actual_size:
+            print(
+                f"[WARN] file_size mismatch for {filename}: meta={recorded_size} actual={actual_size}. Updating TSV.",
+                file=sys.stderr,
+            )
+            row["file_size"] = actual_size
+
+        if not recorded_md5 or recorded_md5.lower() != actual_md5.lower():
+            print(
+                f"[WARN] md5sum mismatch for {filename}: meta={recorded_md5 or None} actual={actual_md5}. Updating TSV.",
+                file=sys.stderr,
+            )
+            row["md5sum"] = actual_md5
+
+    # Write out TSV (with possibly updated file_size/md5sum)
     df = pd.DataFrame([row])
     df.to_csv("samplesheet_no_entityid-${safe_name}.tsv", sep="\\t", index=False)
     PYCODE
