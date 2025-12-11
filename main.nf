@@ -48,7 +48,7 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    maxForks  = 100   // only 100 tasks at a time
+    maxForks  = 100   // limit to 100 tasks at a time
     // One container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
 
@@ -85,18 +85,41 @@ process synapse_to_crdc {
       exit 127
     fi
 
-    echo "=== Step 1: Downloading from Synapse ${meta.entityid} ==="
-    synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid}
+    echo "=== Step 1: Downloading from Synapse ${meta.entityid} with path-aware file_name ==="
+    FILE_PATH="${meta.file_name}"
+    FILE_DIR="\$(dirname "\$FILE_PATH")"
+
+    # There may be duplicate files, in this case they must have a submfolder! If file_name includes a directory (e.g. folder/subdir/file.bam),
+    # create that directory and download into it.
+    if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
+      echo "Detected directory in file_name: \$FILE_DIR"
+      mkdir -p "\$FILE_DIR"
+      synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid} --downloadLocation "\$FILE_DIR"
+    else
+      # No directory in file_name; download into current directory as before.
+      synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid}
+    fi
 
     echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (with file_size/md5 verification) ==="
     pip install --quiet pandas
     python3 - <<'PYCODE'
-    import pandas as pd, json, os, hashlib, sys
+    import pandas as pd, json, os, hashlib, sys, os.path
 
     # Load row from Nextflow-provided JSON
     row = json.loads('''${json}''')
 
+    # file_name may include a directory (e.g. "folder/subdir/file.bam")
     filename = row.get("file_name")
+
+    # If the full path doesn't exist, fall back to basename if present
+    if filename:
+        if not os.path.exists(filename):
+            alt = os.path.basename(filename)
+            if os.path.exists(alt):
+                print(f"[WARN] {filename!r} not found, but basename {alt!r} exists; using basename for verification.",
+                      file=sys.stderr)
+                filename = alt
+
     if not filename or not os.path.exists(filename):
         print(f"[WARN] Downloaded file {filename!r} not found; cannot verify size/md5", file=sys.stderr)
     else:
