@@ -1,9 +1,9 @@
-type	study.study_id	sample.sample_id	file_id	file_name	file_type	file_size	md5sum	experimental_strategy_and_data_subtypes	entityid	file_description	file_url_in_cds	submission_version	checksum_value	checksum_algorithm	crdc_id	file_mapping_level	release_datetime	is_supplementary_file
-file	phs002371	HTA9_32_2		DUPLICATE_FILENAME/0000319997.bam	BAM	10002160028	56adcf0501af847a08a8e966b701c6cc	WXS; RNA-Seq	syn68528355									
-file	phs002371	HTA9_38_1		DUPLICATE_FILENAME/0000340463.bam	BAM	7008720197	9018ceffecb998d1db5be28ac2f577fa	WXS; RNA-Seq	syn68528433									
-file	phs002371	HTA9_25_20		DUPLICATE_FILENAME/0000321972.bam	BAM	11534532608	52f33cac161ffa7942c302e984b352c6	WXS; RNA-Seq	syn68528286									
-file	phs002371	HTA9_26_21		DUPLICATE_FILENAME/0000340456.bam	BAM	18223343973	1a7fa4c49740eea4af066ffe2cb0c148	WXS; RNA-Seq	syn68528334									
-file	phs002371	HTA9_27_21		DUPLICATE_FILENAME/0000303169.bam	BAM	529016503	78a7d853fce8872ca9839170ad40fa9a	WXS; RNA-Seq	syn68528204									
-file	phs002371	HTA9_30_1		DUPLICATE_FILENAME/0000320079.bam	BAM	1264959533	265281e68e1fba4b698f70d2ca920b8e	WXS; RNA-Seq	syn68528222									
-file	phs002371	HTA9_34_4		DUPLICATE_FILENAME/0000320245.bam	BAM	902602756	45645679fdb0b8c132473992530e59c5	WXS; RNA-Seq	syn68528229									
-file	phs002371	HTA9_36_1		DUPLICATE_FILENAME/0000346152.bam	BAM	915081620	3b9f5de7a03db12246f5f9ac19157643	WXS; RNA-Seq	syn68528272									
+type	study.study_id	sample.sample_id	file_name	file_type	file_size	md5sum	experimental_strategy_and_data_subtypes	entityid	file_description	file_url_in_cds	submission_version	checksum_value	checksum_algorithm	crdc_id	file_mapping_level	release_datetime	is_supplementary_file
+file	phs002371	HTA9_27_21	DUPLICATE_FILENAME_2/0000303169.bam	BAM	9489783369	e8a57749649a27648087c8b60362e5fc	WXS; RNA-Seq	syn68528340									
+file	phs002371	HTA9_32_2	DUPLICATE_FILENAME_3/0000319997.bam	BAM	10002160028	56adcf0501af847a08a8e966b701c6cc	WXS; RNA-Seq	syn68528355									
+file	phs002371	HTA9_30_1	DUPLICATE_FILENAME_3/0000320079.bam	BAM	6675769124	5f4ee484525ee8643e6e68e23993e00c	WXS; RNA-Seq	syn68528360									
+file	phs002371	HTA9_38_1	DUPLICATE_FILENAME_3/0000340463.bam	BAM	7008720197	9018ceffecb998d1db5be28ac2f577fa	WXS; RNA-Seq	syn68528433									
+file	phs002371	HTA9_34_4	DUPLICATE_FILENAME_3/0000320245.bam	BAM	10520624316	8a5fe6b675b1288636a3982af85f04c5	WXS; RNA-Seq	syn68528185									
+file	phs002371	HTA9_25_20	DUPLICATE_FILENAME_3/0000321972.bam	BAM	11534532608	52f33cac161ffa7942c302e984b352c6	WXS; RNA-Seq	syn68528286									
+file	phs002371	HTA9_26_21	DUPLICATE_FILENAME_3/0000340456.bam	BAM	18223343973	1a7fa4c49740eea4af066ffe2cb0c148	WXS; RNA-Seq	syn68528334									
+file	phs002371	HTA9_36_1	DUPLICATE_FILENAME_1/0000346152.bam	BAM	915081620	3b9f5de7a03db12246f5f9ac19157643	WXS; RNA-Seq	syn68528272									
