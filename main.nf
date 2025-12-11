@@ -89,14 +89,14 @@ process synapse_to_crdc {
     FILE_PATH="${meta.file_name}"
     FILE_DIR="\$(dirname "\$FILE_PATH")"
 
-    # There may be duplicate files, in this case they must have a submfolder! If file_name includes a directory (e.g. folder/subdir/file.bam),
+    # If file_name includes a directory (e.g. folder/subdir/file.bam),
     # create that directory and download into it.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
       synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid} --downloadLocation "\$FILE_DIR"
     else
-      # No directory in file_name; download into current directory as before.
+      echo "No directory component in file_name; using current directory."
       synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid}
     fi
 
@@ -116,12 +116,16 @@ process synapse_to_crdc {
         if not os.path.exists(filename):
             alt = os.path.basename(filename)
             if os.path.exists(alt):
-                print(f"[WARN] {filename!r} not found, but basename {alt!r} exists; using basename for verification.",
-                      file=sys.stderr)
+                print(
+                    f"[WARN] {filename!r} not found, but basename {alt!r} exists; "
+                    f"using basename for verification.",
+                    file=sys.stderr
+                )
                 filename = alt
 
     if not filename or not os.path.exists(filename):
-        print(f"[WARN] Downloaded file {filename!r} not found; cannot verify size/md5", file=sys.stderr)
+        print(f"[WARN] Downloaded file {filename!r} not found; cannot verify size/md5",
+              file=sys.stderr)
     else:
         # Compute actual file size
         actual_size = os.path.getsize(filename)
@@ -146,36 +150,68 @@ process synapse_to_crdc {
         # Compare and, if different/missing, update the TSV values
         if recorded_size != actual_size:
             print(
-                f"[WARN] file_size mismatch for {filename}: meta={recorded_size} actual={actual_size}. Updating TSV.",
+                f"[WARN] file_size mismatch for {filename}: meta={recorded_size} "
+                f"actual={actual_size}. Updating TSV.",
                 file=sys.stderr,
             )
             row["file_size"] = actual_size
 
         if not recorded_md5 or recorded_md5.lower() != actual_md5.lower():
             print(
-                f"[WARN] md5sum mismatch for {filename}: meta={recorded_md5 or None} actual={actual_md5}. Updating TSV.",
+                f"[WARN] md5sum mismatch for {filename}: meta={recorded_md5 or None} "
+                f"actual={actual_md5}. Updating TSV.",
                 file=sys.stderr,
             )
             row["md5sum"] = actual_md5
 
-    # Write out TSV (with possibly updated file_size/md5sum)
+    # Decide where to write the per-file TSV:
+    # same directory as file_name (if it has a directory), otherwise current dir.
+    tsv_basename = "samplesheet_no_entityid-${safe_name}.tsv"
+    if filename:
+        dirpath = os.path.dirname(filename)
+    else:
+        dirpath = ""
+
+    if dirpath and dirpath != ".":
+        out_path = os.path.join(dirpath, tsv_basename)
+    else:
+        out_path = tsv_basename
+
     df = pd.DataFrame([row])
-    df.to_csv("samplesheet_no_entityid-${safe_name}.tsv", sep="\\t", index=False)
+    df.to_csv(out_path, sep="\\t", index=False)
+    print(f"[INFO] Wrote per-file TSV to {out_path}", file=sys.stderr)
     PYCODE
 
     echo "=== Step 3: Writing CRDC config YAML ==="
-    cat > cli-config-${safe_name}_file.yml <<YML
+
+    # We want the YAML to live in the same directory as the TSV + file
+    TSV_BASENAME="samplesheet_no_entityid-${safe_name}.tsv"
+
+    if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
+      MANIFEST_REL="../\$FILE_DIR/\$TSV_BASENAME"
+      CONFIG_REL="../\$FILE_DIR/cli-config-${safe_name}_file.yml"
+      CONFIG_FILE_PATH="\$FILE_DIR/cli-config-${safe_name}_file.yml"
+    else
+      MANIFEST_REL="../\$TSV_BASENAME"
+      CONFIG_REL="../cli-config-${safe_name}_file.yml"
+      CONFIG_FILE_PATH="cli-config-${safe_name}_file.yml"
+    fi
+
+    cat > "\$CONFIG_FILE_PATH" <<YML
     Config:
       api-url: https://hub.datacommons.cancer.gov/api/graphql
       dryrun: ${dryrun_val}
       overwrite: false
       retries: 3
       submission: \$CRDC_SUBMISSION_ID
-      manifest: ../samplesheet_no_entityid-${safe_name}.tsv
+      manifest: \$MANIFEST_REL
       data: ..
       token: \$CRDC_API_TOKEN
       type: data file
     YML
+
+    echo "[INFO] Wrote CRDC config YAML to \$CONFIG_FILE_PATH"
+    echo "[INFO]   manifest path in config: \$MANIFEST_REL"
 
     echo "=== Step 4: Cloning CRDC uploader and running upload ==="
     git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
@@ -183,8 +219,8 @@ process synapse_to_crdc {
     pip install --quiet -r requirements.txt
 
     python3 src/uploader.py \\
-      --config ../cli-config-${safe_name}_file.yml \\
-      --manifest ../samplesheet_no_entityid-${safe_name}.tsv \\
+      --config "\$CONFIG_REL" \\
+      --manifest "\$MANIFEST_REL" \\
       ${dryrun_flag} || true
 
     echo "=== Step 5: Uploader log ==="
