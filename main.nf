@@ -145,7 +145,7 @@ process synapse_to_crdc {
     Config:
       api-url: https://hub.datacommons.cancer.gov/api/graphql
       dryrun: ${dryrun_val}
-      overwrite: ${params.overwrite}
+      overwrite: false
       retries: 3
       submission: \$CRDC_SUBMISSION_ID
       manifest: ../samplesheet_no_entityid-${safe_name}.tsv
