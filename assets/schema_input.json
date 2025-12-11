@@ -11,7 +11,7 @@
 
       "study.study_id": {
         "type": "string",
-        "^phs\\d{6,}(?:_HTAN)?$"
+        "pattern": "^phs\\d{6,}(?:_HTAN)?$"
       },
 
       "participant.study_participant_id": { "type": ["string", "null"] },
