@@ -21,7 +21,7 @@ def resolved_input = _isUrl ? _raw
 
 validateParameters()
 
-// headers must match your TSV
+// headers must match your TSV - TSV is based on file upload from CRDC
 def headers = [
   "type", "study.study_id", "participant.study_participant_id",
   "sample.sample_id", "file_name", "file_type", "file_description",
@@ -43,13 +43,13 @@ ch_input = Channel.fromList(
 
 /*
 ================================================================================
-    SINGLE ALL-IN-ONE PROCESS
+    SINGLE PROCESS
 ================================================================================
 */
 
 process synapse_to_crdc {
     maxForks  = 100   // limit to 100 tasks at a time
-    // One container: synapse get + TSV + config + upload
+    // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
 
     tag "${meta.file_name}"
@@ -91,6 +91,7 @@ process synapse_to_crdc {
 
     # If file_name includes a directory (e.g. folder/subdir/file.bam),
     # create that directory and download into it.
+    # File names contain directories IF a file has a duplicate filename.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
