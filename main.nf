@@ -62,8 +62,8 @@ process synapse_to_crdc {
     secret 'CRDC_API_TOKEN'
 
     output:
-    // Nextflow collects these from the task root (we copy them there)
-    tuple val(meta), path("cli-config-*_file.yml"), path("samplesheet_no_entityid-*.tsv")
+    // Allow TSV + YAML to live in subdirectories (e.g. DUPLICATE_FILENAME/)
+    tuple val(meta), path("**/cli-config-*_file.yml"), path("**/samplesheet_no_entityid-*.tsv")
 
     script:
     // remove entityid from TSV metadata
@@ -192,13 +192,11 @@ process synapse_to_crdc {
       MANIFEST_REL="../\$FILE_DIR/\$TSV_BASENAME"
       CONFIG_FILE_PATH="\$FILE_DIR/cli-config-${safe_name}_file.yml"
       CONFIG_REL="../\$FILE_DIR/cli-config-${safe_name}_file.yml"
-      REAL_TSV_PATH="\$FILE_DIR/\$TSV_BASENAME"
     else
       # No subdir: everything in current dir
       MANIFEST_REL="../\$TSV_BASENAME"
       CONFIG_FILE_PATH="cli-config-${safe_name}_file.yml"
       CONFIG_REL="../cli-config-${safe_name}_file.yml"
-      REAL_TSV_PATH="\$TSV_BASENAME"
     fi
 
     cat > "\$CONFIG_FILE_PATH" <<YML
@@ -216,11 +214,6 @@ process synapse_to_crdc {
 
     echo "[INFO] Wrote CRDC config YAML to \$CONFIG_FILE_PATH"
     echo "[INFO]   manifest path in config: \$MANIFEST_REL"
-
-    # === Step 3b: Copy TSV + YAML to task root so Nextflow sees them as outputs ===
-    echo "=== Step 3b: Copying TSV + YAML to task root for Nextflow outputs ==="
-    cp "\$REAL_TSV_PATH" "samplesheet_no_entityid-${safe_name}.tsv"
-    cp "\$CONFIG_FILE_PATH" "cli-config-${safe_name}_file.yml"
 
     echo "=== Step 4: Cloning CRDC uploader and running upload ==="
     git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
