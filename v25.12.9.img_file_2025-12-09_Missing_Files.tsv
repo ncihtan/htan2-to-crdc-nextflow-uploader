@@ -1,0 +1,5 @@
+type	study.study_id	sample.sample_id	file_name	file_type	file_size	md5sum	experimental_strategy_and_data_subtypes	entityid	file_description	file_url_in_cds	submission_version	checksum_value	checksum_algorithm	crdc_id	file_mapping_level	release_datetime	is_supplementary_file
+file	phs002371_HTAN	HTA7_1256_2	LSP16138.ome.tif	OME-TIFF	1.84E+11	a12f3fd612df7a10caf02be64e06a84a	Pathological	syn68349234									
+file	phs002371_HTAN	HTA7_1254_2	LSP16144.ome.tif	OME-TIFF	1.79E+11	7cbab24ff105d0d66db97466f4aa7ba7	Pathological	syn68349249									
+file	phs002371_HTAN	HTA7_1250_2	LSP16156.ome.tif	OME-TIFF	1.79E+11	fafbc791e2b2d22dbf1edb05059d6ddc	Pathological	syn68349290									
+file	phs002371_HTAN	HTA7_1267_2	LSP18305.ome.tif	OME-TIFF	1.71E+11	2d292344061870803417ac2883e672a5	Pathological	syn68349624									
