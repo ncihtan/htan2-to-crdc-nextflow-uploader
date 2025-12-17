@@ -48,7 +48,7 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    maxForks  = 100   // limit to 100 tasks at a time
+    maxForks  = 100
     // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
 
@@ -102,68 +102,16 @@ process synapse_to_crdc {
       FILE_DIR="."   # normalize for later logic
     fi
 
-    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (with file_size/md5 verification) ==="
+    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
     pip install --quiet pandas
     python3 - <<'PYCODE'
-    import pandas as pd, json, os, hashlib, sys, os.path
+    import pandas as pd, json, os, sys, os.path
 
     # Load row from Nextflow-provided JSON
     row = json.loads('''${json}''')
 
     # file_name may include a directory (e.g. "folder/subdir/file.bam")
     filename = row.get("file_name")
-
-    if filename:
-        if not os.path.exists(filename):
-            alt = os.path.basename(filename)
-            if os.path.exists(alt):
-                print(
-                    f"[WARN] {filename!r} not found, but basename {alt!r} exists; "
-                    f"using basename for verification.",
-                    file=sys.stderr
-                )
-                filename = alt
-
-    if not filename or not os.path.exists(filename):
-        print(f"[WARN] Downloaded file {filename!r} not found; cannot verify size/md5",
-              file=sys.stderr)
-    else:
-        # Compute actual file size
-        actual_size = os.path.getsize(filename)
-
-        # Compute actual md5
-        h = hashlib.md5()
-        with open(filename, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                h.update(chunk)
-        actual_md5 = h.hexdigest()
-
-        # Parse recorded values from metadata
-        recorded_size = None
-        if row.get("file_size") not in (None, "", "NA", "NaN"):
-            try:
-                recorded_size = int(row.get("file_size"))
-            except (TypeError, ValueError):
-                recorded_size = None
-
-        recorded_md5 = row.get("md5sum") or ""
-
-        # Compare and, if different/missing, update the TSV values
-        if recorded_size != actual_size:
-            print(
-                f"[WARN] file_size mismatch for {filename}: meta={recorded_size} "
-                f"actual={actual_size}. Updating TSV.",
-                file=sys.stderr,
-            )
-            row["file_size"] = actual_size
-
-        if not recorded_md5 or recorded_md5.lower() != actual_md5.lower():
-            print(
-                f"[WARN] md5sum mismatch for {filename}: meta={recorded_md5 or None} "
-                f"actual={actual_md5}. Updating TSV.",
-                file=sys.stderr,
-            )
-            row["md5sum"] = actual_md5
 
     # Decide where to write the per-file TSV:
     # same directory as file_name (if it has a directory), otherwise current dir.
