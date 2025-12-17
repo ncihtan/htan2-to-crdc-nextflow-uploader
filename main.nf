@@ -48,9 +48,6 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    memory = 300.GB
-    cpus   = 4
-    time   = 72.h
     maxForks = 1
     // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
