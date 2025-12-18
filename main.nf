@@ -49,6 +49,7 @@ ch_input = Channel.fromList(
 
 process synapse_to_crdc {
     maxForks = 1
+
     // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
 
@@ -62,8 +63,10 @@ process synapse_to_crdc {
     secret 'CRDC_API_TOKEN'
 
     output:
-    // Allow TSV + YAML to live in subdirectories (e.g. DUPLICATE_FILENAME/)
-    tuple val(meta), path("**/cli-config-*_file.yml"), path("**/samplesheet_no_entityid-*.tsv")
+    // TSV is required; YAML is optional
+    tuple val(meta),
+          path("**/cli-config-*_file.yml"), optional: true,
+          path("**/samplesheet_no_entityid-*.tsv")
 
     script:
     // remove entityid from TSV metadata
@@ -91,7 +94,6 @@ process synapse_to_crdc {
 
     # If file_name includes a directory (e.g. folder/subdir/file.bam),
     # create that directory and download into it.
-    # File names contain directories IF a file has a duplicate filename.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
@@ -99,22 +101,17 @@ process synapse_to_crdc {
     else
       echo "No directory component in file_name; using current directory."
       synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid}
-      FILE_DIR="."   # normalize for later logic
+      FILE_DIR="."
     fi
 
     echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
     pip install --quiet pandas
     python3 - <<'PYCODE'
-    import pandas as pd, json, os, sys, os.path
+    import pandas as pd, json, os, sys
 
-    # Load row from Nextflow-provided JSON
     row = json.loads('''${json}''')
-
-    # file_name may include a directory (e.g. "folder/subdir/file.bam")
     filename = row.get("file_name")
 
-    # Decide where to write the per-file TSV:
-    # same directory as file_name (if it has a directory), otherwise current dir.
     tsv_basename = "samplesheet_no_entityid-${safe_name}.tsv"
     if filename:
         dirpath = os.path.dirname(filename)
@@ -136,12 +133,10 @@ process synapse_to_crdc {
     TSV_BASENAME="samplesheet_no_entityid-${safe_name}.tsv"
 
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
-      # Everything lives inside \$FILE_DIR
       MANIFEST_REL="../\$FILE_DIR/\$TSV_BASENAME"
       CONFIG_FILE_PATH="\$FILE_DIR/cli-config-${safe_name}_file.yml"
       CONFIG_REL="../\$FILE_DIR/cli-config-${safe_name}_file.yml"
     else
-      # No subdir: everything in current dir
       MANIFEST_REL="../\$TSV_BASENAME"
       CONFIG_FILE_PATH="cli-config-${safe_name}_file.yml"
       CONFIG_REL="../cli-config-${safe_name}_file.yml"
@@ -161,7 +156,6 @@ process synapse_to_crdc {
     YML
 
     echo "[INFO] Wrote CRDC config YAML to \$CONFIG_FILE_PATH"
-    echo "[INFO]   manifest path in config: \$MANIFEST_REL"
 
     echo "=== Step 4: Cloning CRDC uploader and running upload ==="
     git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
