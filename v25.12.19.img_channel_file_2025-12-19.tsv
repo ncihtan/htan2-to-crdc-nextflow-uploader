@@ -1,4 +1,4 @@
-type	study.study_id	sample.sample_id	file_name	file_type	file_size	md5sum	experimental_strategy_and_data_subtypes	entityId	file_description	file_url_in_cds	submission_version	checksum_value	checksum_algorithm	crdc_id	file_mapping_level	release_datetime	is_supplementary_file
+type	study.study_id	sample.sample_id	file_name	file_type	file_size	md5sum	experimental_strategy_and_data_subtypes	entityid	file_description	file_url_in_cds	submission_version	checksum_value	checksum_algorithm	crdc_id	file_mapping_level	release_datetime	is_supplementary_file
 file	phs002371_HTAN	HTA11_546_2000001011	HTA11_546_200000101152300121.channel.csv	CSV	632	56b23d8e4e0d066595846b54f153f7f2	Pathological	syn55253984									
 file	phs002371_HTAN	HTA11_10711_2000001011	HTA11_10711_2000001011523001.channel.csv	CSV	552	d8be25985e8a7ab1b4ee71dfa1d6d934	Pathological	syn62060664									
 file	phs002371_HTAN	HTA11_1391_2000001011	HTA11_1391_2000001011523001.channel.csv	CSV	596	0ec8b4343ebf1b97417bd0331d15f939	Pathological	syn62060549									
