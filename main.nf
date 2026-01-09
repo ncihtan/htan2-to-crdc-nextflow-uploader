@@ -105,26 +105,30 @@ process synapse_to_crdc {
     fi
 
     echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
-    pip install --quiet pandas
     python3 - <<'PYCODE'
-    import pandas as pd, json, os, sys
+    import json, os, sys, csv
 
     row = json.loads('''${json}''')
-    filename = row.get("file_name")
+    filename = row.get("file_name") or ""
 
     tsv_basename = "samplesheet_no_entityid-${safe_name}.tsv"
-    if filename:
-        dirpath = os.path.dirname(filename)
-    else:
-        dirpath = ""
+    dirpath = os.path.dirname(filename)
 
     if dirpath and dirpath != ".":
         out_path = os.path.join(dirpath, tsv_basename)
     else:
         out_path = tsv_basename
 
-    df = pd.DataFrame([row])
-    df.to_csv(out_path, sep="\\t", index=False)
+    # Keep a stable column order (same order as the JSON dict)
+    fieldnames = list(row.keys())
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True) if os.path.dirname(out_path) else None
+
+    with open(out_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\\t", extrasaction="ignore")
+        w.writeheader()
+        w.writerow(row)
+
     print(f"[INFO] Wrote per-file TSV to {out_path}", file=sys.stderr)
     PYCODE
 
