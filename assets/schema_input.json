@@ -9,10 +9,7 @@
     "properties": {
       "type": { "type": "string", "enum": ["file"] },
 
-      "study.study_id": {
-        "type": "string",
-        "pattern": "^phs\\d{6,}(?:_HTAN)?$"
-      },
+      "study.study_id": { "type": ["string", "null"] },
 
       "participant.study_participant_id": { "type": ["string", "null"] },
 
@@ -20,7 +17,7 @@
 
       "file_name": { "type": "string" },
 
-      "file_type": { "type": "string"},
+      "file_type": { "type": "null"},
 
       "file_description": { "type": ["string", "null"] },
 
@@ -55,9 +52,7 @@
     },
     "required": [
       "type",
-      "study.study_id",
       "file_name",
-      "file_type",
       "file_size",
       "md5sum",
       "entityid"
