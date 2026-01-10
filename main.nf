@@ -48,6 +48,7 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
+    // keep your current parallelism; adjust in tower.config via withName:maxForks if you want
     maxForks = 200
 
     // Call container: synapse get + TSV + config + upload
@@ -97,10 +98,10 @@ process synapse_to_crdc {
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
-      synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid} --downloadLocation "\$FILE_DIR"
+      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR"
     else
       echo "No directory component in file_name; using current directory."
-      synapse -p \$SYNAPSE_AUTH_TOKEN_DYP get ${meta.entityid}
+      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid}
       FILE_DIR="."
     fi
 
@@ -122,7 +123,8 @@ process synapse_to_crdc {
     # Keep a stable column order (same order as the JSON dict)
     fieldnames = list(row.keys())
 
-    os.makedirs(os.path.dirname(out_path), exist_ok=True) if os.path.dirname(out_path) else None
+    if os.path.dirname(out_path):
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     with open(out_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\\t", extrasaction="ignore")
@@ -164,7 +166,27 @@ process synapse_to_crdc {
     echo "=== Step 4: Cloning CRDC uploader and running upload ==="
     git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
     cd crdc-datahub-cli-uploader
-    pip install --quiet -r requirements.txt
+
+    echo "=== Step 4b: Installing CRDC uploader requirements (retry; skip file on failure) ==="
+    set +e
+    ok=0
+    for i in 1 2 3; do
+      echo "[INFO] pip install attempt \$i/3"
+      python3 -m pip install --quiet --default-timeout=180 --retries 10 -r requirements.txt
+      rc=\$?
+      if [[ \$rc -eq 0 ]]; then
+        ok=1
+        break
+      fi
+      echo "[WARN] pip install failed (rc=\$rc); retrying soon..." >&2
+      sleep \$((i*20))
+    done
+    set -e
+
+    if [[ \$ok -ne 1 ]]; then
+      echo "[WARN] pip install failed after retries; skipping ${meta.file_name}." >&2
+      exit 0
+    fi
 
     python3 src/uploader.py \\
       --config "\$CONFIG_REL" \\
