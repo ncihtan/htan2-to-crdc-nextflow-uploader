@@ -1,0 +1,6 @@
+checksum_algorithm	checksum_value	entityid	experimental_strategy_and_data_subtypes	file_description	file_mapping_level	file_name	file_size	file_type	is_supplementary_file	md5sum	participant.study_participant_id	release_datetime	sample.sample_id	study.study_id	submission_version	type
+		syn68742060				HTA5_1380_1004.bam	29098770304			d8e1a0e8c48dd2a2caadf9419484aea6						file
+		syn64768745				6091-SR-3_S1_L005_R1_001.fastq.gz	24428708355			c2b3990c6616b6fd7fa60c818601f198						file
+		syn64587974				H_YZ-1294-1294_S7_L004_R2_001.fastq.gz	23292937356			423a8f0b34eb0c2f99e743f357435d6e						file
+		syn64108824				HTA8_5002_001101_IGO_10218_15_S15_L001_R1_001.fastq.gz	1613145414			dd6897b96d74c9e7cf7cf20a5ec44c06						file
+		syn61908316				HTA8_6017_001101_Aligned.out.bam	20351445928			ef797d1e180ac6cdf7f806867e95f1bf						file
