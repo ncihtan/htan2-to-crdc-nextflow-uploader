@@ -49,7 +49,7 @@ ch_input = Channel.fromList(
 
 process synapse_to_crdc {
     // Parallelism cap for Sequera Tower
-    maxForks = 10
+    maxForks = 1
 
     // Resource allocation to prevent OOM errors (scales up on retry)
     cpus   = 4
