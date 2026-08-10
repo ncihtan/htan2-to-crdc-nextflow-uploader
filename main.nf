@@ -1,3 +1,46 @@
+#!/usr/bin/env nextflow
+nextflow.enable.dsl = 2
+
+/*
+================================================================================
+    PARAMETERS AND INPUTS
+================================================================================
+*/
+
+include { validateParameters; paramsSummaryLog; samplesheetToList } from 'plugin/nf-schema'
+
+// ---- Resolve samplesheet path (local or GitHub/raw URL) ----
+def _raw = params.input ?: 'samplesheet.tsv'
+def _isUrl = (_raw ==~ /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//)
+def _abs   = file(_raw).isAbsolute()
+def repoPath = file("${projectDir}/${_raw}")
+
+def resolved_input = _isUrl ? _raw
+                    : (_abs && file(_raw).exists()) ? file(_raw).toString()
+                    : (repoPath.exists() ? repoPath.toString() : repoPath.toString())
+
+validateParameters()
+
+// headers must match your TSV - TSV is based on file upload from CRDC
+def headers = [
+  "type", "study.study_id", "participant.study_participant_id",
+  "sample.sample_id", "file_name", "file_type", "file_description",
+  "file_size", "md5sum", "experimental_strategy_and_data_subtypes",
+  "submission_version", "checksum_value", "checksum_algorithm",
+  "file_mapping_level", "release_datetime", "is_supplementary_file", "entityid"
+]
+
+ch_input = Channel.fromList(
+    samplesheetToList(resolved_input, "assets/schema_input.json")
+).map { row ->
+    if (row instanceof List) {
+        return headers.collectEntries { h -> [h, row[headers.indexOf(h)]] }
+    } else {
+        return row
+    }
+}
+
+
 /*
 ================================================================================
     SINGLE PROCESS
@@ -8,7 +51,7 @@ process synapse_to_crdc {
     // Cap concurrent execution to 10 parallel tasks on Sequera Tower
     maxForks = 10
 
-    // Resource allocation for Sequera Tower (requests node RAM & auto-scales on retry)
+    // Resource allocation for Sequera Tower (requests node RAM/disk & auto-scales on retry)
     cpus   = 4
     memory = { 32.GB * task.attempt }
     disk   = { 200.GB * task.attempt }
@@ -167,4 +210,15 @@ YML
 
     echo "=== Done for ${meta.file_name} ==="
     """
+}
+
+
+/*
+================================================================================
+    WORKFLOW
+================================================================================
+*/
+
+workflow {
+    ch_input | synapse_to_crdc
 }
