@@ -51,7 +51,7 @@ process synapse_to_crdc {
     // Parallelism cap for Sequera Tower
     maxForks = 1
 
-    // Resource allocation to prevent OOM errors (scales up on retry)
+    // Resource allocation for Sequera Tower (starts at 64 GB, scales to 128 GB on retry)
     cpus   = 4
     memory = { 64.GB * task.attempt }
     disk   = { 250.GB * task.attempt }
@@ -88,8 +88,6 @@ process synapse_to_crdc {
     """
     set -euo pipefail
 
-    # Throttles Synapse concurrent chunk workers to prevent RAM spikes
-    export SYNAPSE_MAX_THREADS=2
     export PYTHONUNBUFFERED=1
 
     echo "=== Step 0: Install git (required for cloning uploader repo) ==="
@@ -101,21 +99,38 @@ process synapse_to_crdc {
       exit 127
     fi
 
-    echo "=== Step 1: Downloading from Synapse ${meta.entityid} with path-aware file_name ==="
+    echo "=== Step 1: Downloading from Synapse ${meta.entityid} with path-aware file_name via Python API ==="
     FILE_PATH="${meta.file_name}"
     FILE_DIR="\$(dirname "\$FILE_PATH")"
 
-    # If file_name includes a directory (e.g. folder/subdir/file.bam),
-    # create that directory and download into it.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR"
     else
-      echo "No directory component in file_name; using current directory."
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid}
       FILE_DIR="."
     fi
+
+    python3 - <<'PYDOWNLOAD'
+import os
+import sys
+import synapseclient
+
+auth_token = os.environ.get("SYNAPSE_AUTH_TOKEN_DYP")
+entity_id = "${meta.entityid}"
+download_dir = os.environ.get("FILE_DIR", ".")
+
+if not auth_token:
+    print("[ERROR] SYNAPSE_AUTH_TOKEN_DYP secret is missing.", file=sys.stderr)
+    sys.exit(1)
+
+# Initialize Synapse client without local file caching
+syn = synapseclient.Synapse(skip_caching=True)
+syn.login(authToken=auth_token, silent=True)
+
+print(f"[INFO] Starting download for {entity_id} into {download_dir}...", file=sys.stderr)
+syn.get(entity_id, downloadLocation=download_dir, ifoffileexists="overwrite")
+print(f"[INFO] Download completed successfully for {entity_id}.", file=sys.stderr)
+PYDOWNLOAD
 
     echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
     python3 - <<'PYCODE'
