@@ -48,13 +48,13 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // Cap concurrent execution to 10 parallel tasks on Sequera Tower
+    // Parallelism cap for Sequera Tower
     maxForks = 10
 
-    // Resource allocation for Sequera Tower (requests node RAM & auto-scales on retry)
+    // Resource allocation to prevent OOM errors (scales up on retry)
     cpus   = 4
-    memory = { 32.GB * task.attempt }
-    disk   = { 200.GB * task.attempt }
+    memory = { 64.GB * task.attempt }
+    disk   = { 250.GB * task.attempt }
     
     errorStrategy = { task.exitStatus in [137, 140, 7] ? 'retry' : 'finish' }
     maxRetries    = 2
@@ -88,8 +88,9 @@ process synapse_to_crdc {
     """
     set -euo pipefail
 
-    # Redirect Synapse cache to current workspace directory on disk
-    export SYNAPSE_CACHE_ROOT="\$PWD/.synapseCache"
+    # Throttles Synapse concurrent chunk workers to prevent RAM spikes
+    export SYNAPSE_MAX_THREADS=2
+    export PYTHONUNBUFFERED=1
 
     echo "=== Step 0: Install git (required for cloning uploader repo) ==="
     if command -v apt-get >/dev/null 2>&1; then
@@ -104,6 +105,7 @@ process synapse_to_crdc {
     FILE_PATH="${meta.file_name}"
     FILE_DIR="\$(dirname "\$FILE_PATH")"
 
+    # If file_name includes a directory (e.g. folder/subdir/file.bam),
     # create that directory and download into it.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
