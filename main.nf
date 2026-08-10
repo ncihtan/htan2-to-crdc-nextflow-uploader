@@ -1,46 +1,3 @@
-#!/usr/bin/env nextflow
-nextflow.enable.dsl = 2
-
-/*
-================================================================================
-    PARAMETERS AND INPUTS
-================================================================================
-*/
-
-include { validateParameters; paramsSummaryLog; samplesheetToList } from 'plugin/nf-schema'
-
-// ---- Resolve samplesheet path (local or GitHub/raw URL) ----
-def _raw = params.input ?: 'samplesheet.tsv'
-def _isUrl = (_raw ==~ /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//)
-def _abs   = file(_raw).isAbsolute()
-def repoPath = file("${projectDir}/${_raw}")
-
-def resolved_input = _isUrl ? _raw
-                    : (_abs && file(_raw).exists()) ? file(_raw).toString()
-                    : (repoPath.exists() ? repoPath.toString() : repoPath.toString())
-
-validateParameters()
-
-// headers must match your TSV - TSV is based on file upload from CRDC
-def headers = [
-  "type", "study.study_id", "participant.study_participant_id",
-  "sample.sample_id", "file_name", "file_type", "file_description",
-  "file_size", "md5sum", "experimental_strategy_and_data_subtypes",
-  "submission_version", "checksum_value", "checksum_algorithm",
-  "file_mapping_level", "release_datetime", "is_supplementary_file", "entityid"
-]
-
-ch_input = Channel.fromList(
-    samplesheetToList(resolved_input, "assets/schema_input.json")
-).map { row ->
-    if (row instanceof List) {
-        return headers.collectEntries { h -> [h, row[headers.indexOf(h)]] }
-    } else {
-        return row
-    }
-}
-
-
 /*
 ================================================================================
     SINGLE PROCESS
@@ -48,8 +5,16 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // keep your current parallelism; adjust in tower.config via withName:maxForks if you want
-    maxForks = 1
+    // Cap concurrent execution to 10 parallel tasks on Sequera Tower
+    maxForks = 10
+
+    // Resource allocation for Sequera Tower (requests node RAM & auto-scales on retry)
+    cpus   = 4
+    memory = { 32.GB * task.attempt }
+    disk   = { 200.GB * task.attempt }
+    
+    errorStrategy = { task.exitStatus in [137, 140, 7] ? 'retry' : 'finish' }
+    maxRetries    = 2
 
     // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
@@ -98,41 +63,41 @@ process synapse_to_crdc {
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR"
+      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR" --use-cache False
     else
       echo "No directory component in file_name; using current directory."
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid}
+      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --use-cache False
       FILE_DIR="."
     fi
 
     echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
     python3 - <<'PYCODE'
-    import json, os, sys, csv
+import json, os, sys, csv
 
-    row = json.loads('''${json}''')
-    filename = row.get("file_name") or ""
+row = json.loads('''${json}''')
+filename = row.get("file_name") or ""
 
-    tsv_basename = "samplesheet_no_entityid-${safe_name}.tsv"
-    dirpath = os.path.dirname(filename)
+tsv_basename = "samplesheet_no_entityid-${safe_name}.tsv"
+dirpath = os.path.dirname(filename)
 
-    if dirpath and dirpath != ".":
-        out_path = os.path.join(dirpath, tsv_basename)
-    else:
-        out_path = tsv_basename
+if dirpath and dirpath != ".":
+    out_path = os.path.join(dirpath, tsv_basename)
+else:
+    out_path = tsv_basename
 
-    # Keep a stable column order (same order as the JSON dict)
-    fieldnames = list(row.keys())
+# Keep a stable column order (same order as the JSON dict)
+fieldnames = list(row.keys())
 
-    if os.path.dirname(out_path):
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+if os.path.dirname(out_path):
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-    with open(out_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\\t", extrasaction="ignore")
-        w.writeheader()
-        w.writerow(row)
+with open(out_path, "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t", extrasaction="ignore")
+    w.writeheader()
+    w.writerow(row)
 
-    print(f"[INFO] Wrote per-file TSV to {out_path}", file=sys.stderr)
-    PYCODE
+print(f"[INFO] Wrote per-file TSV to {out_path}", file=sys.stderr)
+PYCODE
 
     echo "=== Step 3: Writing CRDC config YAML ==="
 
@@ -149,17 +114,17 @@ process synapse_to_crdc {
     fi
 
     cat > "\$CONFIG_FILE_PATH" <<YML
-    Config:
-      api-url: https://hub.datacommons.cancer.gov/api/graphql
-      dryrun: ${dryrun_val}
-      overwrite: false
-      retries: 3
-      submission: \$CRDC_SUBMISSION_ID
-      manifest: \$MANIFEST_REL
-      data: ..
-      token: \$CRDC_API_TOKEN
-      type: data file
-    YML
+Config:
+  api-url: https://hub.datacommons.cancer.gov/api/graphql
+  dryrun: ${dryrun_val}
+  overwrite: false
+  retries: 3
+  submission: \$CRDC_SUBMISSION_ID
+  manifest: \$MANIFEST_REL
+  data: ..
+  token: \$CRDC_API_TOKEN
+  type: data file
+YML
 
     echo "[INFO] Wrote CRDC config YAML to \$CONFIG_FILE_PATH"
 
@@ -202,15 +167,4 @@ process synapse_to_crdc {
 
     echo "=== Done for ${meta.file_name} ==="
     """
-}
-
-
-/*
-================================================================================
-    WORKFLOW
-================================================================================
-*/
-
-workflow {
-    ch_input | synapse_to_crdc
 }
