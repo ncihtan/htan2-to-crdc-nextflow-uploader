@@ -9,10 +9,7 @@
     "properties": {
       "type": { "type": "string", "enum": ["file"] },
 
-      "study.phs_accession": {
-        "type": "string",
-        "pattern": "^phs\\d{6,}$"
-      },
+      "study.study_id": { "type": ["string", "null"] },
 
       "participant.study_participant_id": { "type": ["string", "null"] },
 
@@ -20,10 +17,7 @@
 
       "file_name": { "type": "string" },
 
-      "file_type": {
-        "type": "string",
-        "enum": ["BAM", "FASTQ", "TSV", "CSV", "CRAM", "VCF", "TXT"]
-      },
+      "file_type": { "type": "null"},
 
       "file_description": { "type": ["string", "null"] },
 
@@ -58,9 +52,7 @@
     },
     "required": [
       "type",
-      "study.phs_accession",
       "file_name",
-      "file_type",
       "file_size",
       "md5sum",
       "entityid"
@@ -68,4 +60,3 @@
     "additionalProperties": true
   }
 }
-
