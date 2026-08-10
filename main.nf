@@ -51,7 +51,7 @@ process synapse_to_crdc {
     // Cap concurrent execution to 10 parallel tasks on Sequera Tower
     maxForks = 10
 
-    // Resource allocation for Sequera Tower (requests node RAM/disk & auto-scales on retry)
+    // Resource allocation for Sequera Tower (requests node RAM & auto-scales on retry)
     cpus   = 4
     memory = { 32.GB * task.attempt }
     disk   = { 200.GB * task.attempt }
@@ -88,6 +88,9 @@ process synapse_to_crdc {
     """
     set -euo pipefail
 
+    # Redirect Synapse cache to current workspace directory on disk
+    export SYNAPSE_CACHE_ROOT="\$PWD/.synapseCache"
+
     echo "=== Step 0: Install git (required for cloning uploader repo) ==="
     if command -v apt-get >/dev/null 2>&1; then
       apt-get update -y
@@ -101,15 +104,14 @@ process synapse_to_crdc {
     FILE_PATH="${meta.file_name}"
     FILE_DIR="\$(dirname "\$FILE_PATH")"
 
-    # If file_name includes a directory (e.g. folder/subdir/file.bam),
     # create that directory and download into it.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR" --use-cache False
+      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR"
     else
       echo "No directory component in file_name; using current directory."
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --use-cache False
+      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid}
       FILE_DIR="."
     fi
 
