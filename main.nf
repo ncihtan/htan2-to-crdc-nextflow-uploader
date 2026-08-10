@@ -48,7 +48,7 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // Parallelism cap for Sequera Tower
+    // Process one 30-100+ GB file at a time to prevent host node OOM saturation
     maxForks = 1
 
     // Resource allocation for Sequera Tower (starts at 64 GB, scales to 128 GB on retry)
@@ -123,8 +123,8 @@ if not auth_token:
     print("[ERROR] SYNAPSE_AUTH_TOKEN_DYP secret is missing.", file=sys.stderr)
     sys.exit(1)
 
-# Initialize Synapse client without local file caching
-syn = synapseclient.Synapse(skip_caching=True)
+# Initialize Synapse client
+syn = synapseclient.Synapse()
 syn.login(authToken=auth_token, silent=True)
 
 print(f"[INFO] Starting download for {entity_id} into {download_dir}...", file=sys.stderr)
