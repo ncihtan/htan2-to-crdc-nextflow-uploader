@@ -17,7 +17,7 @@
 
       "file_name": { "type": "string" },
 
-      "file_type": { "type": "null"},
+      "file_type": { "type": "string"},
 
       "file_description": { "type": ["string", "null"] },
 
