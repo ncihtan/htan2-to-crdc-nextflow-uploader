@@ -108,14 +108,14 @@ process synapse_to_crdc {
       DEST_PATH="\$TARGET_NAME"
     fi
 
-    # Retrieve file handle ID and fetch pre-signed S3 download URL via Synapse Python API
+    # Retrieve pre-signed S3 download URL via Synapse Python API
     URL=\$(python3 -c "
 import os, synapseclient
 syn = synapseclient.Synapse()
 syn.login(authToken=os.environ['SYNAPSE_AUTH_TOKEN_DYP'], silent=True)
 entity = syn.get('${meta.entityid}', downloadFile=False)
-file_handle_id = entity.dataFileHandleId
-print(syn.file_handle_download_url('${meta.entityid}', file_handle_id))
+file_handle = syn.restGET(f'/entity/{entity.id}/filehandle/{entity.dataFileHandleId}/url?redirect=false')
+print(file_handle)
 ")
 
     # Stream directly to disk using curl (zero Python RAM overhead)
