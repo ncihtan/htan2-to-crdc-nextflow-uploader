@@ -48,7 +48,7 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // Process one 30-100+ GB file at a time to prevent host node OOM saturation
+    // Process 1 file at a time to prevent host OOM saturation
     maxForks = 1
 
     // Resource allocation for Sequera Tower (starts at 64 GB, scales to 128 GB on retry)
@@ -89,6 +89,7 @@ process synapse_to_crdc {
     set -euo pipefail
 
     export PYTHONUNBUFFERED=1
+    export SYNAPSE_MAX_THREADS=2
 
     echo "=== Step 0: Install git (required for cloning uploader repo) ==="
     if command -v apt-get >/dev/null 2>&1; then
@@ -101,13 +102,14 @@ process synapse_to_crdc {
 
     echo "=== Step 1: Downloading from Synapse ${meta.entityid} with path-aware file_name via Python API ==="
     FILE_PATH="${meta.file_name}"
-    FILE_DIR="\$(dirname "\$FILE_PATH")"
+    export FILE_DIR="\$(dirname "\$FILE_PATH")"
+    export ENTITY_ID="${meta.entityid}"
 
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
     else
-      FILE_DIR="."
+      export FILE_DIR="."
     fi
 
     python3 - <<'PYDOWNLOAD'
@@ -116,14 +118,13 @@ import sys
 import synapseclient
 
 auth_token = os.environ.get("SYNAPSE_AUTH_TOKEN_DYP")
-entity_id = "${meta.entityid}"
+entity_id = os.environ.get("ENTITY_ID")
 download_dir = os.environ.get("FILE_DIR", ".")
 
 if not auth_token:
     print("[ERROR] SYNAPSE_AUTH_TOKEN_DYP secret is missing.", file=sys.stderr)
     sys.exit(1)
 
-# Initialize Synapse client
 syn = synapseclient.Synapse()
 syn.login(authToken=auth_token, silent=True)
 
