@@ -48,10 +48,10 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // Force sequential execution (1 file at a time) to prevent node memory saturation
+    // Process one file at a time to avoid host memory saturation
     maxForks = 1
 
-    // Resource allocation tuned to AWS Batch EC2 instance ratios (m5a/m6a/r5a/r6a)
+    // Resource allocation aligned with AWS Batch m5a/m6a/r5a/r6a instance ratios
     // Attempt 1: 16 vCPUs + 64 GB RAM (Occupies an entire m5a.4xlarge node)
     // Attempt 2: 32 vCPUs + 128 GB RAM (Occupies an entire m5a.8xlarge node)
     cpus   = { 16 * task.attempt }
