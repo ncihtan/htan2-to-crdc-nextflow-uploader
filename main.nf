@@ -48,12 +48,10 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // Process one large file at a time to prevent memory saturation
+    // Process one file at a time
     maxForks = 1
 
-    // Resource allocation tuned to AWS Batch EC2 instance ratios (m5a/m6a/r5a/r6a)
-    // Attempt 1: 16 vCPUs + 64 GB RAM (Occupies an entire m5a.4xlarge / m6a.4xlarge)
-    // Attempt 2: 32 vCPUs + 128 GB RAM (Occupies an entire m5a.8xlarge / r5a.4xlarge)
+    // Resource allocation aligned with AWS Batch m5a/m6a/r5a/r6a instance ratios
     cpus   = { 16 * task.attempt }
     memory = { 64.GB * task.attempt }
     disk   = { 300.GB * task.attempt }
@@ -61,7 +59,6 @@ process synapse_to_crdc {
     errorStrategy = { task.exitStatus in [137, 140, 7] ? 'retry' : 'finish' }
     maxRetries    = 2
 
-    // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
 
     tag "${meta.file_name}"
@@ -74,13 +71,11 @@ process synapse_to_crdc {
     secret 'CRDC_API_TOKEN'
 
     output:
-    // TSV is required; YAML is optional
     tuple val(meta),
           path("**/cli-config-*_file.yml"), optional: true,
           path("**/samplesheet_no_entityid-*.tsv")
 
     script:
-    // remove entityid from TSV metadata
     def clean_meta  = meta.findAll { k, v -> k != 'entityid' }
     def json        = groovy.json.JsonOutput.toJson(clean_meta)
     def safe_name   = meta.file_name.replaceAll(/[^a-zA-Z0-9._-]/, "_")
@@ -90,32 +85,41 @@ process synapse_to_crdc {
     """
     set -euo pipefail
 
-    echo "=== Step 0: Install git (required for cloning uploader repo) ==="
+    echo "=== Step 0: Install git and curl ==="
     if command -v apt-get >/dev/null 2>&1; then
       apt-get update -y
-      apt-get install -y git
+      apt-get install -y git curl
     else
-      echo "apt-get not available; cannot install git" >&2
+      echo "apt-get not available; cannot install packages" >&2
       exit 127
     fi
 
-    echo "=== Step 1: Downloading from Synapse ${meta.entityid} with path-aware file_name ==="
+    echo "=== Step 1: Downloading ${meta.entityid} via low-memory curl stream ==="
     FILE_PATH="${meta.file_name}"
     FILE_DIR="\$(dirname "\$FILE_PATH")"
+    TARGET_NAME="\$(basename "\$FILE_PATH")"
 
-    # If file_name includes a directory (e.g. folder/subdir/file.bam),
-    # create that directory and download into it.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR"
+      DEST_PATH="\$FILE_DIR/\$TARGET_NAME"
     else
-      echo "No directory component in file_name; using current directory."
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid}
       FILE_DIR="."
+      DEST_PATH="\$TARGET_NAME"
     fi
 
-    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
+    # Fetch the pre-signed S3 download URL via Synapse Python API
+    URL=\$(python3 -c "
+import os, synapseclient
+syn = synapseclient.Synapse()
+syn.login(authToken=os.environ['SYNAPSE_AUTH_TOKEN_DYP'], silent=True)
+print(syn._getFileHandleDownloadURL('${meta.entityid}'))
+")
+
+    # Use curl to stream directly to disk with minimal memory overhead
+    curl -L --retry 5 --retry-delay 10 -o "\$DEST_PATH" "\$URL"
+
+    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} ==="
     python3 - <<'PYCODE'
 import json, os, sys, csv
 
@@ -130,7 +134,6 @@ if dirpath and dirpath != ".":
 else:
     out_path = tsv_basename
 
-# Keep a stable column order (same order as the JSON dict)
 fieldnames = list(row.keys())
 
 if os.path.dirname(out_path):
@@ -177,7 +180,7 @@ YML
     git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
     cd crdc-datahub-cli-uploader
 
-    echo "=== Step 4b: Installing CRDC uploader requirements (retry; skip file on failure) ==="
+    echo "=== Step 4b: Installing CRDC uploader requirements ==="
     set +e
     ok=0
     for i in 1 2 3; do
