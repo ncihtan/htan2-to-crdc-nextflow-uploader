@@ -49,7 +49,7 @@ ch_input = Channel.fromList(
 
 process synapse_to_crdc {
     // Process 1 file at a time sequentially to avoid shared host memory/network saturation
-    maxForks = 4
+    maxForks = 10
 
     // Resource allocation aligned with AWS Batch m5a/m6a/r5a/r6a instance ratios
     cpus   = { 16 * task.attempt }
