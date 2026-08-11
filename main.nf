@@ -129,7 +129,7 @@ syn = synapseclient.Synapse()
 syn.login(authToken=auth_token, silent=True)
 
 print(f"[INFO] Starting download for {entity_id} into {download_dir}...", file=sys.stderr)
-syn.get(entity_id, downloadLocation=download_dir, ifoffileexists="overwrite")
+syn.get(entity_id, downloadLocation=download_dir)
 print(f"[INFO] Download completed successfully for {entity_id}.", file=sys.stderr)
 PYDOWNLOAD
 
