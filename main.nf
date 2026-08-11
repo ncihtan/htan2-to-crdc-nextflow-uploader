@@ -48,8 +48,18 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // keep your current parallelism; adjust in tower.config via withName:maxForks if you want
+    // Process one large file at a time to prevent memory saturation
     maxForks = 1
+
+    // Resource allocation tuned to AWS Batch EC2 instance ratios (m5a/m6a/r5a/r6a)
+    // Attempt 1: 16 vCPUs + 64 GB RAM (Occupies an entire m5a.4xlarge / m6a.4xlarge)
+    // Attempt 2: 32 vCPUs + 128 GB RAM (Occupies an entire m5a.8xlarge / r5a.4xlarge)
+    cpus   = { 16 * task.attempt }
+    memory = { 64.GB * task.attempt }
+    disk   = { 300.GB * task.attempt }
+    
+    errorStrategy = { task.exitStatus in [137, 140, 7] ? 'retry' : 'finish' }
+    maxRetries    = 2
 
     // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
@@ -107,32 +117,32 @@ process synapse_to_crdc {
 
     echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
     python3 - <<'PYCODE'
-    import json, os, sys, csv
+import json, os, sys, csv
 
-    row = json.loads('''${json}''')
-    filename = row.get("file_name") or ""
+row = json.loads('''${json}''')
+filename = row.get("file_name") or ""
 
-    tsv_basename = "samplesheet_no_entityid-${safe_name}.tsv"
-    dirpath = os.path.dirname(filename)
+tsv_basename = "samplesheet_no_entityid-${safe_name}.tsv"
+dirpath = os.path.dirname(filename)
 
-    if dirpath and dirpath != ".":
-        out_path = os.path.join(dirpath, tsv_basename)
-    else:
-        out_path = tsv_basename
+if dirpath and dirpath != ".":
+    out_path = os.path.join(dirpath, tsv_basename)
+else:
+    out_path = tsv_basename
 
-    # Keep a stable column order (same order as the JSON dict)
-    fieldnames = list(row.keys())
+# Keep a stable column order (same order as the JSON dict)
+fieldnames = list(row.keys())
 
-    if os.path.dirname(out_path):
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+if os.path.dirname(out_path):
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-    with open(out_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\\t", extrasaction="ignore")
-        w.writeheader()
-        w.writerow(row)
+with open(out_path, "w", newline="") as f:
+    w = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t", extrasaction="ignore")
+    w.writeheader()
+    w.writerow(row)
 
-    print(f"[INFO] Wrote per-file TSV to {out_path}", file=sys.stderr)
-    PYCODE
+print(f"[INFO] Wrote per-file TSV to {out_path}", file=sys.stderr)
+PYCODE
 
     echo "=== Step 3: Writing CRDC config YAML ==="
 
@@ -149,17 +159,17 @@ process synapse_to_crdc {
     fi
 
     cat > "\$CONFIG_FILE_PATH" <<YML
-    Config:
-      api-url: https://hub.datacommons.cancer.gov/api/graphql
-      dryrun: ${dryrun_val}
-      overwrite: false
-      retries: 3
-      submission: \$CRDC_SUBMISSION_ID
-      manifest: \$MANIFEST_REL
-      data: ..
-      token: \$CRDC_API_TOKEN
-      type: data file
-    YML
+Config:
+  api-url: https://hub.datacommons.cancer.gov/api/graphql
+  dryrun: ${dryrun_val}
+  overwrite: false
+  retries: 3
+  submission: \$CRDC_SUBMISSION_ID
+  manifest: \$MANIFEST_REL
+  data: ..
+  token: \$CRDC_API_TOKEN
+  type: data file
+YML
 
     echo "[INFO] Wrote CRDC config YAML to \$CONFIG_FILE_PATH"
 
