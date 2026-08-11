@@ -86,62 +86,75 @@ process synapse_to_crdc {
     set -euo pipefail
 
     export PYTHONUNBUFFERED=1
-
-    echo "=== Step 0: Install git (required for cloning uploader repo) ==="
-    if command -v apt-get >/dev/null 2>&1; then
-      apt-get update -y
-      apt-get install -y git
-    else
-      echo "apt-get not available; cannot install packages" >&2
-      exit 127
-    fi
-
-    echo "=== Step 1: Downloading ${meta.entityid} via 8MB chunked urllib stream ==="
-    FILE_PATH="${meta.file_name}"
-    export FILE_DIR="\$(dirname "\$FILE_PATH")"
-    export TARGET_NAME="\$(basename "\$FILE_PATH")"
+    export META_JSON='${json}'
     export ENTITY_ID="${meta.entityid}"
+    export SAFE_NAME="${safe_name}"
 
-    if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
-      echo "Detected directory in file_name: \$FILE_DIR"
-      mkdir -p "\$FILE_DIR"
-    else
-      export FILE_DIR="."
+    echo "=== Step 0: Ensure git dependency ==="
+    if ! command -v git >/dev/null 2>&1; then
+      if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y && apt-get install -y git
+      else
+        echo "[ERROR] git is not installed and apt-get is unavailable" >&2
+        exit 127
+      fi
     fi
 
-    python3 - <<'PYDOWNLOAD'
+    echo "=== Step 1 & 2: Stream Download & Generate TSV Manifest ==="
+    python3 - <<'PYPROCESS'
 import os
 import sys
+import csv
+import json
 import urllib.request
 import synapseclient
 
-auth_token = os.environ.get("SYNAPSE_AUTH_TOKEN_DYP")
+# Load inputs from environment
+meta_json = os.environ.get("META_JSON", "{}")
+row = json.loads(meta_json)
 entity_id = os.environ.get("ENTITY_ID")
-file_dir = os.environ.get("FILE_DIR", ".")
-target_name = os.environ.get("TARGET_NAME")
+auth_token = os.environ.get("SYNAPSE_AUTH_TOKEN_DYP")
+safe_name = os.environ.get("SAFE_NAME")
 
 if not auth_token:
     print("[ERROR] SYNAPSE_AUTH_TOKEN_DYP secret is missing.", file=sys.stderr)
     sys.exit(1)
 
-# Login to Synapse
+# Resolve file directory and file name
+filename = row.get("file_name") or ""
+dirpath = os.path.dirname(filename)
+target_basename = os.path.basename(filename)
+
+if dirpath and dirpath != ".":
+    os.makedirs(dirpath, exist_ok=True)
+    dest_path = os.path.join(dirpath, target_basename)
+    tsv_path = os.path.join(dirpath, f"samplesheet_no_entityid-{safe_name}.tsv")
+else:
+    dirpath = "."
+    dest_path = target_basename
+    tsv_path = f"samplesheet_no_entityid-{safe_name}.tsv"
+
+# --- 1. Synapse Pre-Signed URL Download ---
 syn = synapseclient.Synapse()
 syn.login(authToken=auth_token, silent=True)
 
-# Retrieve entity metadata without triggering download
-print(f"[INFO] Fetching file handle metadata for {entity_id}...", file=sys.stderr)
+print(f"[INFO] Resolving metadata for {entity_id}...", file=sys.stderr)
 entity = syn.get(entity_id, downloadFile=False)
 
-# Resolve URL via internal download URL generator
-download_url = syn._getFileHandleDownloadURL(entity_id)
+file_handle_id = entity.dataFileHandleId
+url_info = syn.restGET(f"/entity/{entity.id}/filehandle/{file_handle_id}/url?redirect=false")
 
-dest_path = os.path.join(file_dir, target_name)
-print(f"[INFO] Streaming {entity_id} directly to {dest_path}...", file=sys.stderr)
+download_url = url_info if isinstance(url_info, str) else (url_info.get("url") or url_info.get("downloadUrl"))
 
-# Stream chunks (8MB) directly to disk to prevent RAM accumulation
+if not download_url:
+    print(f"[ERROR] Could not resolve download URL for {entity_id}", file=sys.stderr)
+    sys.exit(1)
+
+print(f"[INFO] Streaming {entity_id} to {dest_path}...", file=sys.stderr)
+
 req = urllib.request.Request(download_url)
 with urllib.request.urlopen(req) as response, open(dest_path, 'wb') as out_file:
-    chunk_size = 8 * 1024 * 1024  # 8 MB
+    chunk_size = 8 * 1024 * 1024  # 8 MB chunks
     downloaded = 0
     while True:
         chunk = response.read(chunk_size)
@@ -150,82 +163,64 @@ with urllib.request.urlopen(req) as response, open(dest_path, 'wb') as out_file:
         out_file.write(chunk)
         downloaded += len(chunk)
 
-print(f"[INFO] Download completed for {entity_id} ({downloaded} bytes written).", file=sys.stderr)
-PYDOWNLOAD
+print(f"[INFO] Downloaded {downloaded} bytes for {entity_id}.", file=sys.stderr)
 
-    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} ==="
-    python3 - <<'PYCODE'
-import json, os, sys, csv
-
-row = json.loads('''${json}''')
-filename = row.get("file_name") or ""
-
-tsv_basename = "samplesheet_no_entityid-${safe_name}.tsv"
-dirpath = os.path.dirname(filename)
-
-if dirpath and dirpath != ".":
-    out_path = os.path.join(dirpath, tsv_basename)
-else:
-    out_path = tsv_basename
-
+# --- 2. Write TSV Manifest ---
 fieldnames = list(row.keys())
+with open(tsv_path, "w", newline="") as f:
+    writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t", extrasaction="ignore")
+    writer.writeheader()
+    writer.writerow(row)
 
-if os.path.dirname(out_path):
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+print(f"[INFO] Wrote TSV manifest to {tsv_path}", file=sys.stderr)
+PYPROCESS
 
-with open(out_path, "w", newline="") as f:
-    w = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t", extrasaction="ignore")
-    w.writeheader()
-    w.writerow(row)
-
-print(f"[INFO] Wrote per-file TSV to {out_path}", file=sys.stderr)
-PYCODE
-
-    echo "=== Step 3: Writing CRDC config YAML ==="
-
-    TSV_BASENAME="samplesheet_no_entityid-${safe_name}.tsv"
+    echo "=== Step 3: Writing CRDC Config YAML (Absolute Paths) ==="
+    FILE_PATH="${meta.file_name}"
+    FILE_DIR="\$(dirname "\$FILE_PATH")"
+    
+    WORK_DIR="\$PWD"
+    TSV_NAME="samplesheet_no_entityid-${safe_name}.tsv"
+    YML_NAME="cli-config-${safe_name}_file.yml"
 
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
-      MANIFEST_REL="../\$FILE_DIR/\$TSV_BASENAME"
-      CONFIG_FILE_PATH="\$FILE_DIR/cli-config-${safe_name}_file.yml"
-      CONFIG_REL="../\$FILE_DIR/cli-config-${safe_name}_file.yml"
+      MANIFEST_ABS="\$WORK_DIR/\$FILE_DIR/\$TSV_NAME"
+      CONFIG_ABS="\$WORK_DIR/\$FILE_DIR/\$YML_NAME"
     else
-      MANIFEST_REL="../\$TSV_BASENAME"
-      CONFIG_FILE_PATH="cli-config-${safe_name}_file.yml"
-      CONFIG_REL="../cli-config-${safe_name}_file.yml"
+      MANIFEST_ABS="\$WORK_DIR/\$TSV_NAME"
+      CONFIG_ABS="\$WORK_DIR/\$YML_NAME"
     fi
 
-    cat > "\$CONFIG_FILE_PATH" <<YML
+    cat > "\$CONFIG_ABS" <<YML
 Config:
   api-url: https://hub.datacommons.cancer.gov/api/graphql
   dryrun: ${dryrun_val}
   overwrite: false
   retries: 3
   submission: \$CRDC_SUBMISSION_ID
-  manifest: \$MANIFEST_REL
-  data: ..
+  manifest: \$MANIFEST_ABS
+  data: \$WORK_DIR
   token: \$CRDC_API_TOKEN
   type: data file
 YML
 
-    echo "[INFO] Wrote CRDC config YAML to \$CONFIG_FILE_PATH"
+    echo "[INFO] Wrote CRDC config YAML to \$CONFIG_ABS"
 
-    echo "=== Step 4: Cloning CRDC uploader and running upload ==="
-    git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
-    cd crdc-datahub-cli-uploader
+    echo "=== Step 4: Cloning CRDC uploader and executing upload ==="
+    if [[ ! -d "crdc-datahub-cli-uploader" ]]; then
+      git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
+    fi
 
-    echo "=== Step 4b: Installing CRDC uploader requirements ==="
+    # Install requirements safely
     set +e
     ok=0
     for i in 1 2 3; do
       echo "[INFO] pip install attempt \$i/3"
-      python3 -m pip install --quiet --default-timeout=180 --retries 10 -r requirements.txt
-      rc=\$?
-      if [[ \$rc -eq 0 ]]; then
+      python3 -m pip install --quiet --default-timeout=180 --retries 10 -r crdc-datahub-cli-uploader/requirements.txt
+      if [[ \$? -eq 0 ]]; then
         ok=1
         break
       fi
-      echo "[WARN] pip install failed (rc=\$rc); retrying soon..." >&2
       sleep \$((i*20))
     done
     set -e
@@ -235,19 +230,20 @@ YML
       exit 0
     fi
 
-    python3 src/uploader.py \\
-      --config "\$CONFIG_REL" \\
-      --manifest "\$MANIFEST_REL" \\
+    # Run uploader from current directory using absolute configs
+    python3 crdc-datahub-cli-uploader/src/uploader.py \\
+      --config "\$CONFIG_ABS" \\
+      --manifest "\$MANIFEST_ABS" \\
       ${dryrun_flag} || true
 
-    echo "=== Step 5: Uploader log ==="
-    if ls tmp/Uploader*.log 1> /dev/null 2>&1; then
-      cat tmp/Uploader*.log
+    echo "=== Step 5: Output Logs ==="
+    if ls crdc-datahub-cli-uploader/tmp/Uploader*.log 1> /dev/null 2>&1; then
+      cat crdc-datahub-cli-uploader/tmp/Uploader*.log
     else
-      echo "No uploader log found"
+      echo "[INFO] No uploader log found"
     fi
 
-    echo "=== Done for ${meta.file_name} ==="
+    echo "=== Completed process for ${meta.file_name} ==="
     """
 }
 
