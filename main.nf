@@ -48,10 +48,10 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // Process 1 file at a time to prevent host memory saturation
+    // Process one file at a time to prevent host OOM exhaustion
     maxForks = 1
 
-    // Resource allocation for Sequera Tower
+    // Resource allocation for Sequera Tower (requests 64GB RAM & 250GB disk; doubles on retry)
     cpus   = 4
     memory = { 64.GB * task.attempt }
     disk   = { 250.GB * task.attempt }
@@ -59,7 +59,7 @@ process synapse_to_crdc {
     errorStrategy = { task.exitStatus in [137, 140, 7] ? 'retry' : 'finish' }
     maxRetries    = 2
 
-    // Call container: synapse + TSV + config + upload
+    // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
 
     tag "${meta.file_name}"
@@ -88,8 +88,6 @@ process synapse_to_crdc {
     """
     set -euo pipefail
 
-    export PYTHONUNBUFFERED=1
-
     echo "=== Step 0: Install git (required for cloning uploader repo) ==="
     if command -v apt-get >/dev/null 2>&1; then
       apt-get update -y
@@ -99,54 +97,21 @@ process synapse_to_crdc {
       exit 127
     fi
 
-    echo "=== Step 1: Downloading from Synapse ${meta.entityid} with low-memory HTTP stream ==="
+    echo "=== Step 1: Downloading from Synapse ${meta.entityid} with path-aware file_name ==="
     FILE_PATH="${meta.file_name}"
-    export FILE_DIR="\$(dirname "\$FILE_PATH")"
-    export ENTITY_ID="${meta.entityid}"
-    export FILE_NAME="\$(basename "\$FILE_PATH")"
+    FILE_DIR="\$(dirname "\$FILE_PATH")"
 
+    # If file_name includes a directory (e.g. folder/subdir/file.bam),
+    # create that directory and download into it.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
+      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR"
     else
-      export FILE_DIR="."
+      echo "No directory component in file_name; using current directory."
+      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid}
+      FILE_DIR="."
     fi
-
-    python3 - <<'PYDOWNLOAD'
-import os
-import sys
-import requests
-import synapseclient
-
-auth_token = os.environ.get("SYNAPSE_AUTH_TOKEN_DYP")
-entity_id = os.environ.get("ENTITY_ID")
-download_dir = os.environ.get("FILE_DIR", ".")
-file_name = os.environ.get("FILE_NAME")
-
-if not auth_token:
-    print("[ERROR] SYNAPSE_AUTH_TOKEN_DYP secret is missing.", file=sys.stderr)
-    sys.exit(1)
-
-# Log into Synapse to retrieve presigned S3 download URL
-syn = synapseclient.Synapse()
-syn.login(authToken=auth_token, silent=True)
-
-print(f"[INFO] Resolving download URL for {entity_id}...", file=sys.stderr)
-download_url = syn._getFileHandleDownloadURL(entity_id)
-
-target_path = os.path.join(download_dir, file_name)
-print(f"[INFO] Streaming {entity_id} directly to disk at {target_path}...", file=sys.stderr)
-
-# Stream chunks (1MB) to disk to keep RAM usage under ~50MB constant
-with requests.get(download_url, stream=True) as response:
-    response.raise_for_status()
-    with open(target_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                f.write(chunk)
-
-print(f"[INFO] Download completed successfully for {entity_id}.", file=sys.stderr)
-PYDOWNLOAD
 
     echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
     python3 - <<'PYCODE'
