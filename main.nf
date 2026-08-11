@@ -48,12 +48,10 @@ ch_input = Channel.fromList(
 */
 
 process synapse_to_crdc {
-    // Process one file at a time to avoid host memory saturation
+    // Process 1 file at a time sequentially to avoid shared host memory/network saturation
     maxForks = 1
 
     // Resource allocation aligned with AWS Batch m5a/m6a/r5a/r6a instance ratios
-    // Attempt 1: 16 vCPUs + 64 GB RAM (Occupies an entire m5a.4xlarge node)
-    // Attempt 2: 32 vCPUs + 128 GB RAM (Occupies an entire m5a.8xlarge node)
     cpus   = { 16 * task.attempt }
     memory = { 64.GB * task.attempt }
     disk   = { 300.GB * task.attempt }
@@ -61,7 +59,6 @@ process synapse_to_crdc {
     errorStrategy = { task.exitStatus in [137, 140, 7] ? 'retry' : 'finish' }
     maxRetries    = 2
 
-    // Call container: synapse get + TSV + config + upload
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
 
     tag "${meta.file_name}"
@@ -74,13 +71,11 @@ process synapse_to_crdc {
     secret 'CRDC_API_TOKEN'
 
     output:
-    // TSV is required; YAML is optional
     tuple val(meta),
           path("**/cli-config-*_file.yml"), optional: true,
           path("**/samplesheet_no_entityid-*.tsv")
 
     script:
-    // remove entityid from TSV metadata
     def clean_meta  = meta.findAll { k, v -> k != 'entityid' }
     def json        = groovy.json.JsonOutput.toJson(clean_meta)
     def safe_name   = meta.file_name.replaceAll(/[^a-zA-Z0-9._-]/, "_")
@@ -90,32 +85,75 @@ process synapse_to_crdc {
     """
     set -euo pipefail
 
+    export PYTHONUNBUFFERED=1
+
     echo "=== Step 0: Install git (required for cloning uploader repo) ==="
     if command -v apt-get >/dev/null 2>&1; then
       apt-get update -y
       apt-get install -y git
     else
-      echo "apt-get not available; cannot install git" >&2
+      echo "apt-get not available; cannot install packages" >&2
       exit 127
     fi
 
-    echo "=== Step 1: Downloading from Synapse ${meta.entityid} with path-aware file_name ==="
+    echo "=== Step 1: Downloading ${meta.entityid} via 8MB chunked urllib stream ==="
     FILE_PATH="${meta.file_name}"
-    FILE_DIR="\$(dirname "\$FILE_PATH")"
+    export FILE_DIR="\$(dirname "\$FILE_PATH")"
+    export TARGET_NAME="\$(basename "\$FILE_PATH")"
+    export ENTITY_ID="${meta.entityid}"
 
-    # If file_name includes a directory (e.g. folder/subdir/file.bam),
-    # create that directory and download into it.
     if [[ "\$FILE_DIR" != "." && -n "\$FILE_DIR" ]]; then
       echo "Detected directory in file_name: \$FILE_DIR"
       mkdir -p "\$FILE_DIR"
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid} --downloadLocation "\$FILE_DIR"
     else
-      echo "No directory component in file_name; using current directory."
-      synapse -p "\$SYNAPSE_AUTH_TOKEN_DYP" get ${meta.entityid}
-      FILE_DIR="."
+      export FILE_DIR="."
     fi
 
-    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} (no md5/file_size verification) ==="
+    python3 - <<'PYDOWNLOAD'
+import os
+import sys
+import urllib.request
+import synapseclient
+
+auth_token = os.environ.get("SYNAPSE_AUTH_TOKEN_DYP")
+entity_id = os.environ.get("ENTITY_ID")
+file_dir = os.environ.get("FILE_DIR", ".")
+target_name = os.environ.get("TARGET_NAME")
+
+if not auth_token:
+    print("[ERROR] SYNAPSE_AUTH_TOKEN_DYP secret is missing.", file=sys.stderr)
+    sys.exit(1)
+
+# Login to Synapse
+syn = synapseclient.Synapse()
+syn.login(authToken=auth_token, silent=True)
+
+# Retrieve entity metadata without triggering download
+print(f"[INFO] Fetching file handle metadata for {entity_id}...", file=sys.stderr)
+entity = syn.get(entity_id, downloadFile=False)
+
+# Resolve URL via internal download URL generator
+download_url = syn._getFileHandleDownloadURL(entity_id)
+
+dest_path = os.path.join(file_dir, target_name)
+print(f"[INFO] Streaming {entity_id} directly to {dest_path}...", file=sys.stderr)
+
+# Stream chunks (8MB) directly to disk to prevent RAM accumulation
+req = urllib.request.Request(download_url)
+with urllib.request.urlopen(req) as response, open(dest_path, 'wb') as out_file:
+    chunk_size = 8 * 1024 * 1024  # 8 MB
+    downloaded = 0
+    while True:
+        chunk = response.read(chunk_size)
+        if not chunk:
+            break
+        out_file.write(chunk)
+        downloaded += len(chunk)
+
+print(f"[INFO] Download completed for {entity_id} ({downloaded} bytes written).", file=sys.stderr)
+PYDOWNLOAD
+
+    echo "=== Step 2: Writing per-file TSV for ${meta.file_name} ==="
     python3 - <<'PYCODE'
 import json, os, sys, csv
 
@@ -130,7 +168,6 @@ if dirpath and dirpath != ".":
 else:
     out_path = tsv_basename
 
-# Keep a stable column order (same order as the JSON dict)
 fieldnames = list(row.keys())
 
 if os.path.dirname(out_path):
@@ -177,7 +214,7 @@ YML
     git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
     cd crdc-datahub-cli-uploader
 
-    echo "=== Step 4b: Installing CRDC uploader requirements (retry; skip file on failure) ==="
+    echo "=== Step 4b: Installing CRDC uploader requirements ==="
     set +e
     ok=0
     for i in 1 2 3; do
