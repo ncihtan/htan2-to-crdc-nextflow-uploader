@@ -109,7 +109,6 @@ import json
 import urllib.request
 import synapseclient
 
-# Load inputs from environment
 meta_json = os.environ.get("META_JSON", "{}")
 row = json.loads(meta_json)
 entity_id = os.environ.get("ENTITY_ID")
@@ -120,7 +119,6 @@ if not auth_token:
     print("[ERROR] SYNAPSE_AUTH_TOKEN_DYP secret is missing.", file=sys.stderr)
     sys.exit(1)
 
-# Resolve file directory and file name
 filename = row.get("file_name") or ""
 dirpath = os.path.dirname(filename)
 target_basename = os.path.basename(filename)
@@ -134,38 +132,49 @@ else:
     dest_path = target_basename
     tsv_path = f"samplesheet_no_entityid-{safe_name}.tsv"
 
-# --- 1. Synapse Pre-Signed URL Download ---
+# Initialize Synapse client
 syn = synapseclient.Synapse()
 syn.login(authToken=auth_token, silent=True)
 
-print(f"[INFO] Resolving metadata for {entity_id}...", file=sys.stderr)
-entity = syn.get(entity_id, downloadFile=False)
+download_success = False
 
-file_handle_id = entity.dataFileHandleId
-url_info = syn.restGET(f"/entity/{entity.id}/filehandle/{file_handle_id}/url?redirect=false")
+# Primary Method: Stream via presigned S3 URL
+try:
+    print(f"[INFO] Fetching file handle metadata for {entity_id}...", file=sys.stderr)
+    entity = syn.get(entity_id, downloadFile=False)
+    file_handle_id = entity.dataFileHandleId
+    clean_id = entity.id if entity.id.startswith('syn') else f"syn{entity.id}"
 
-download_url = url_info if isinstance(url_info, str) else (url_info.get("url") or url_info.get("downloadUrl"))
+    # Query FileHandle endpoint on syn.fileHandleEndpoint
+    uri = f"/file/{file_handle_id}?fileAssociateType=FileEntity&fileAssociateId={clean_id}&redirect=false"
+    url_info = syn.restGET(uri, endpoint=syn.fileHandleEndpoint)
 
-if not download_url:
-    print(f"[ERROR] Could not resolve download URL for {entity_id}", file=sys.stderr)
-    sys.exit(1)
+    download_url = url_info if isinstance(url_info, str) else (url_info.get("url") or url_info.get("downloadUrl"))
 
-print(f"[INFO] Streaming {entity_id} to {dest_path}...", file=sys.stderr)
+    if download_url:
+        print(f"[INFO] Streaming {entity_id} directly to {dest_path}...", file=sys.stderr)
+        req = urllib.request.Request(download_url)
+        with urllib.request.urlopen(req) as response, open(dest_path, 'wb') as out_file:
+            chunk_size = 8 * 1024 * 1024
+            downloaded = 0
+            while True:
+                chunk = response.read(chunk_size)
+                if not chunk:
+                    break
+                out_file.write(chunk)
+                downloaded += len(chunk)
+        print(f"[INFO] Successfully streamed {downloaded} bytes for {entity_id}.", file=sys.stderr)
+        download_success = True
+except Exception as e:
+    print(f"[WARN] Streaming presigned URL failed: {e}. Falling back to standard syn.get()...", file=sys.stderr)
 
-req = urllib.request.Request(download_url)
-with urllib.request.urlopen(req) as response, open(dest_path, 'wb') as out_file:
-    chunk_size = 8 * 1024 * 1024  # 8 MB chunks
-    downloaded = 0
-    while True:
-        chunk = response.read(chunk_size)
-        if not chunk:
-            break
-        out_file.write(chunk)
-        downloaded += len(chunk)
+# Fallback Method: Standard client download
+if not download_success:
+    print(f"[INFO] Downloading {entity_id} via syn.get()...", file=sys.stderr)
+    syn.get(entity_id, downloadLocation=dirpath, ifoffileexists="overwrite")
+    print(f"[INFO] Download completed via syn.get() for {entity_id}.", file=sys.stderr)
 
-print(f"[INFO] Downloaded {downloaded} bytes for {entity_id}.", file=sys.stderr)
-
-# --- 2. Write TSV Manifest ---
+# Write TSV Manifest
 fieldnames = list(row.keys())
 with open(tsv_path, "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t", extrasaction="ignore")
@@ -211,7 +220,6 @@ YML
       git clone --recurse-submodules --depth 1 https://github.com/CBIIT/crdc-datahub-cli-uploader.git
     fi
 
-    # Install requirements safely
     set +e
     ok=0
     for i in 1 2 3; do
@@ -230,7 +238,6 @@ YML
       exit 0
     fi
 
-    # Run uploader from current directory using absolute configs
     python3 crdc-datahub-cli-uploader/src/uploader.py \\
       --config "\$CONFIG_ABS" \\
       --manifest "\$MANIFEST_ABS" \\
