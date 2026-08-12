@@ -56,7 +56,7 @@ process synapse_to_crdc {
     memory = { 64.GB * task.attempt }
     disk   = { 300.GB * task.attempt }
     
-    errorStrategy = { task.exitStatus in [137, 140, 7] ? 'retry' : 'finish' }
+    errorStrategy = { task.exitStatus in [137, 140, 7] ? 'retry' : 'ignore' }
     maxRetries    = 2
 
     container 'ghcr.io/sage-bionetworks/synapsepythonclient:develop-b784b854a069e926f1f752ac9e4f6594f66d01b7'
