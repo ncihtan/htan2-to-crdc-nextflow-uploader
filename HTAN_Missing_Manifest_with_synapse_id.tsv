@@ -1,4 +1,4 @@
-type	file_id	file_name	file_type	file_description	file_size	md5sum	file_url_in_cds	experimental_strategy_and_data_subtypes	submission_version	checksum_value	checksum_algorithm	file_mapping_level	release_datetime	is_supplementary_file	crdc_id	synapse_id
+type	file_id	file_name	file_type	file_description	file_size	md5sum	file_url_in_cds	experimental_strategy_and_data_subtypes	submission_version	checksum_value	checksum_algorithm	file_mapping_level	release_datetime	is_supplementary_file	crdc_id	entityid
 file	dg.4DFC/b8450cd2-3afe-5eef-aac4-2a06c1983024	LSP11064.ome.tif	OME-TIFF		133379748627	0984824f0d5c825f268e92ed7b253da9		Pathological								syn68348965
 file	dg.4DFC/3f0dafb4-c8d4-5064-837e-5bd50f585c24	LSP16136.ome.tif	OME-TIFF		150385650917	fb1bcdcde491e6f68f26614e4eb1defa		Pathological								syn68349215
 file	dg.4DFC/c23fd789-c625-5ca2-8764-c14b4477aa10	LSP17726.ome.tif	OME-TIFF		115706946979	56621fa666ce98e49687776a40042292		Pathological								syn68349309
