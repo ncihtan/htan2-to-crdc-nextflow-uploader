@@ -1,0 +1,10 @@
+type	file_id	file_name	file_type	file_description	file_size	md5sum	file_url_in_cds	experimental_strategy_and_data_subtypes	submission_version	checksum_value	checksum_algorithm	file_mapping_level	release_datetime	is_supplementary_file	crdc_id	entityid
+file	dg.4DFC/b27eb112-2de0-52cf-bf60-28eed238d6c9	melanoma_tma2_30_2300.ome.tif	OME-TIFF		804083340	474156c83e9da76024b6f38e9e672108		Pathological								syn68695438
+file	dg.4DFC/a97a84d3-e2b7-5b3d-b82c-2ba3e0690cc5	melanoma_tma2_31_2300.ome.tif	OME-TIFF		804083340	a6cb90dee241aab85c15ec633c820a77		Pathological								syn68695441
+file	dg.4DFC/b28b0dff-8bab-5055-bbd1-cca35d443e65	melanoma_tma2_32_2300.ome.tif	OME-TIFF		804083340	99135d5b1875a89968be942c0dae9ce3		Pathological								syn68695439
+file	dg.4DFC/a31abda0-fd21-5426-a9ad-d7867669f20f	melanoma_tma2_33_2300.ome.tif	OME-TIFF		804083340	6209b3633693cdacc41a96e7eaaa8442		Pathological								syn68695440
+file	dg.4DFC/5c5d41bb-47f6-5177-a04c-6c965fec7f17	melanoma_tma2_34_2300.ome.tif	OME-TIFF		804083340	e89f31400c5518a0097e3a6218f47f22		Pathological								syn68695444
+file	dg.4DFC/6f66b542-8366-5189-a461-38d97e7f23c6	melanoma_tma2_35_2300.ome.tif	OME-TIFF		804083340	283775093996e118494231dce5f46989		Pathological								syn68695442
+file	dg.4DFC/2830435c-5388-5a60-997c-21c8c175958f	melanoma_tma2_36_2300.ome.tif	OME-TIFF		804083340	5905b0e317a22f7cd55df22090dd084c		Pathological								syn68695443
+file	dg.4DFC/af69fff4-8d29-5ef2-97a4-8d7c95f09091	melanoma_tma2_37_2300.ome.tif	OME-TIFF		804083340	fc72d7f9524b61a498c9c9c08427862f		Pathological								syn68695445
+file	dg.4DFC/748c579c-dffd-53ec-8686-1cd6393a84e8	melanoma_tma2_38_2300.ome.tif	OME-TIFF		804083340	62358053fe6a114ddeefcc0bd07bbd2a		Pathological								syn68695453
